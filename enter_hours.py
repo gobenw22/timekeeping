@@ -1,13 +1,15 @@
 import tkinter as tk
-from tkinter import simpledialog, messagebox
+from tkinter import simpledialog, messagebox, ttk
 import csv
 import os
 import sys
 import subprocess
 from datetime import datetime, timedelta
+from collections import defaultdict
 
 # Define the absolute path to the CSV file
-csv_file_path = r'C:\Users\Benjamin Wildmon\Desktop\data_log.csv'
+csv_file_path = r'C:\Users\Benjamin Wildmon\Desktop\EnterHours\data_log.csv'
+summary_file_path = r'C:\Users\Benjamin Wildmon\Desktop\EnterHours\weekly_summary.csv'
 
 class CustomDialog(simpledialog.Dialog):
     def __init__(self, parent, title, prompt):
@@ -111,10 +113,82 @@ def open_data_log():
     except Exception as e:
         messagebox.showerror("Error", f"Failed to open file in VS Code: {e}")
 
+def open_weekly_summary():
+    try:
+        subprocess.Popen(['code', summary_file_path])
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to open weekly summary in VS Code: {e}")
+
+def show_todays_entries():
+    today = datetime.now().date()
+    entries = []
+
+    if os.path.exists(csv_file_path):
+        with open(csv_file_path, 'r') as file:
+            reader = csv.reader(file)
+            for row in reader:
+                try:
+                    entry_date = datetime.strptime(row[3], '%Y-%m-%d %H:%M:%S').date()
+                    if entry_date == today:
+                        entries.append(row)
+                except (ValueError, IndexError):
+                    continue
+
+    if entries:
+        display_entries_table(entries)
+    else:
+        messagebox.showinfo("Today's Entries", "No entries found for today.")
+
+def display_entries_table(entries):
+    table_window = tk.Toplevel(root)
+    table_window.title("Today's Entries")
+    
+    tree = ttk.Treeview(table_window, columns=("Client", "Task", "Hours", "Time"), show='headings')
+    tree.heading("Client", text="Client")
+    tree.heading("Task", text="Task")
+    tree.heading("Hours", text="Hours")
+    tree.heading("Time", text="Time")
+    
+    for entry in entries:
+        tree.insert('', 'end', values=entry)
+    
+    tree.pack(expand=True, fill='both')
+
+def generate_weekly_summary():
+    weekly_summary = defaultdict(lambda: {'total_hours': 0.0, 'tasks': []})
+    week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).date()
+
+    if os.path.exists(csv_file_path):
+        with open(csv_file_path, 'r') as file:
+            reader = csv.reader(file)
+            for row in reader:
+                try:
+                    entry_date = datetime.strptime(row[3], '%Y-%m-%d %H:%M:%S').date()
+                    if entry_date >= week_start:
+                        client_name = row[0]
+                        task_description = row[1]
+                        entry_hours = float(row[2])
+                        key = (entry_date, client_name)
+
+                        weekly_summary[key]['total_hours'] += entry_hours
+                        weekly_summary[key]['tasks'].append(task_description)
+                except (ValueError, IndexError):
+                    continue
+
+    with open(summary_file_path, 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(['Date', 'Client', 'Total Hours', 'Tasks'])
+
+        for (date, client), data in weekly_summary.items():
+            tasks = "; ".join(data['tasks'])
+            writer.writerow([date, client, data['total_hours'], tasks])
+
+    messagebox.showinfo("Weekly Summary", f"Weekly summary saved to {summary_file_path}")
+
 def soft_lock():
     global root
     root = tk.Tk()
-    root.geometry("400x300")
+    root.geometry("400x400")
     root.title("Data Entry Required")
 
     def on_enter_data():
@@ -126,19 +200,28 @@ def soft_lock():
         sys.exit()
 
     label = tk.Label(root, text="Please enter the data to proceed.", font=("Arial", 14))
-    label.pack(pady=50)
+    label.pack(pady=30)
 
     enter_data_button = tk.Button(root, text="Enter Data", command=on_enter_data)
-    enter_data_button.pack(pady=10)
+    enter_data_button.pack(pady=5)
 
+    show_entries_button = tk.Button(root, text="Show Today's Entries", command=show_todays_entries)
+    show_entries_button.pack(pady=5)
+    
     clear_data_log_button = tk.Button(root, text="Clear Data Log", command=clear_data_log)
-    clear_data_log_button.pack(pady=10)
+    clear_data_log_button.pack(pady=5)
 
     open_data_log_button = tk.Button(root, text="Open Data Log", command=open_data_log)
-    open_data_log_button.pack(pady=10)
+    open_data_log_button.pack(pady=5)
+
+    summary_button = tk.Button(root, text="Generate Weekly Summary", command=generate_weekly_summary)
+    summary_button.pack(pady=5)
+
+    open_weekly_summary_button = tk.Button(root, text="Open Weekly Summary", command=open_weekly_summary)
+    open_weekly_summary_button.pack(pady=5)
 
     end_script_button = tk.Button(root, text="End Script", command=on_end_script)
-    end_script_button.pack(pady=10)
+    end_script_button.pack(pady=5)
 
     root.mainloop()
 
